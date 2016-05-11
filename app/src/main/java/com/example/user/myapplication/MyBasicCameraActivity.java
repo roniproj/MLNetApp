@@ -40,9 +40,11 @@ public class MyBasicCameraActivity extends AppCompatActivity {
 
     private CameraListener mCameraListener = new CameraListener();
     private MyJavaCameraView mOpenCvCameraView;
-    private static final String TAG = "HelloWorldOpenCV";
+
+    private static final String TAG = "MyCameraApp";
     private Button mSaveButton;
     private Button mLoadImageButton;
+    private Button mImageProcButton;
 
     //menu members
     private static final int SETTINGS_GROUP_ID = 1;
@@ -55,10 +57,9 @@ public class MyBasicCameraActivity extends AppCompatActivity {
     //flags
     private Boolean mSettingsMenuAvaialable =false;
 
-
-
     private String[] mCameraNames = {"Front", "Back"};
     private int[] mCameraIDarray = {CameraBridgeViewBase.CAMERA_ID_FRONT, CameraBridgeViewBase.CAMERA_ID_BACK};
+
 
     private BaseLoaderCallback mLoaderCallback = new
             BaseLoaderCallback(this) {
@@ -111,7 +112,7 @@ public class MyBasicCameraActivity extends AppCompatActivity {
                 }*/
                 String fileName = file.getPath() +
                         //Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).getPath() +
-                                "/picture_of_myapp_" + currentDateandTime + ".jpg";
+                        "/picture_of_myapp_" + currentDateandTime + ".jpg";
                 mOpenCvCameraView.takePicture(fileName);
                 addImageToGallery(fileName, MyBasicCameraActivity.this);
 
@@ -130,6 +131,19 @@ public class MyBasicCameraActivity extends AppCompatActivity {
                 startActivityForResult(intent, CHOOSE_IMG_FROM_GALLERY_CODE);
             }
         });
+
+        // Take care of the go to image processing activity window button:
+        final Context context = this;
+        mImageProcButton = (Button) findViewById(R.id.imgProcButton);
+        mImageProcButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Log.i(TAG, "onClick event");
+                Intent intent = new Intent(context, ImageProcessing.class);
+                startActivity(intent);
+            }
+        });
+
     }
 
     @Override
@@ -167,11 +181,12 @@ public class MyBasicCameraActivity extends AppCompatActivity {
                 int columnIndex = c.getColumnIndex(filePath[0]);
                 String picturePath = c.getString(columnIndex);
                 c.close();
-                Bitmap thumbnail = (BitmapFactory.decodeFile(picturePath));
-                Log.w("path of image from gallery......******************.........", picturePath + "");
+                Bitmap fetchedImage = (BitmapFactory.decodeFile(picturePath));
+                Log.w("path of image from gallery: ", picturePath + "");
                 // Allows viewing images from gallery, by a click of a button.
                 ImageView imageView = (ImageView) findViewById(R.id.imageViewGallery);
-                imageView.setImageBitmap(thumbnail);
+                imageView.setVisibility(View.VISIBLE);
+                imageView.setImageBitmap(fetchedImage);
             }
         }
     }
@@ -239,8 +254,8 @@ public class MyBasicCameraActivity extends AppCompatActivity {
     public void onBackPressed() {
         //super.onBackPressed();
         ImageView im = (ImageView)findViewById(R.id.imageViewGallery);
-        if (im.getVisibility() != View.INVISIBLE) {
-            im.setVisibility(View.INVISIBLE);
+        if (im.getVisibility() == View.VISIBLE) {
+            im.setVisibility(View.GONE);
         } else {
             finish();
         }
