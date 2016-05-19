@@ -19,7 +19,12 @@ import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.android.Utils;
 import org.opencv.core.Mat;
+import org.opencv.core.Rect;
 import org.opencv.imgproc.Imgproc;
+
+import java.util.Vector;
+
+import static com.example.user.myapplication.MyImageProc.mergePatches;
 
 public class ImageProcessing extends AppCompatActivity {
 
@@ -28,6 +33,8 @@ public class ImageProcessing extends AppCompatActivity {
     // Buttons:
     Button mLoadImageButton;
     Button mConvert2GrayButton;
+    Button mSplitToPatchesButton;
+    Button mMergePatchesButton;
 
     //intents codes
     private static final int CHOOSE_IMG_FROM_GALLERY_CODE = 1;
@@ -37,6 +44,13 @@ public class ImageProcessing extends AppCompatActivity {
     // This instance will be saved upon clicking the load image button and its related method.
     private Mat mLoadedImage;
     private Mat mGrayImageToProcess;
+    private Mat mDisplayedPatch;
+
+    // Split to patches data:
+    Vector<Mat> mPatches;
+    Vector<Rect> mPatchesRects;
+    Mat mReconstImage;
+    int mShiftForSplitting;
 
 
     private BaseLoaderCallback mLoaderCallback = new
@@ -70,8 +84,7 @@ public class ImageProcessing extends AppCompatActivity {
             }
         });
 
-        // Take care of convert to grayscale button"
-        //final Context context = this;
+        // Take care of convert to grayscale button:
         mConvert2GrayButton = (Button) findViewById(R.id.cnvrt2Gray);
         mConvert2GrayButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -80,6 +93,42 @@ public class ImageProcessing extends AppCompatActivity {
                 convertToGrayscaleAction();
             }
         });
+
+        // Take care of split-to-patches button:
+        mSplitToPatchesButton = (Button) findViewById(R.id.split2Patches);
+        mSplitToPatchesButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Log.i(TAG, "onClick event");
+                int maxAmountOfPatches = mGrayImageToProcess.rows() * mGrayImageToProcess.cols();
+                mPatchesRects = new Vector<>(maxAmountOfPatches);
+                mShiftForSplitting = 3;
+                mPatches = MyImageProc.splitToPatches(mGrayImageToProcess, 8, mShiftForSplitting, mPatchesRects);
+                mDisplayedPatch = mPatches.get(100);
+                Bitmap patchBmp = Bitmap.createBitmap(mDisplayedPatch.cols(), mDisplayedPatch.rows(), Bitmap.Config.ARGB_8888);
+                Utils.matToBitmap(mDisplayedPatch, patchBmp);
+                ImageView imageView = (ImageView) findViewById(R.id.imageViewGallery);
+                imageView.setImageBitmap(patchBmp);
+            }
+        });
+
+        // Take care of split-to-patches button:
+        mMergePatchesButton = (Button) findViewById(R.id.mergePatches);
+        mMergePatchesButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Log.i(TAG, "onClick event");
+                mReconstImage = mergePatches(mPatches, mGrayImageToProcess.rows(), mGrayImageToProcess.cols(), mPatchesRects);
+                Log.i(TAG, "Successfully merged patches");
+                //mDisplayedPatch = reconstructedImage;
+                Bitmap patchBmp = Bitmap.createBitmap(mReconstImage.cols(), mReconstImage.rows(), Bitmap.Config.ARGB_8888);
+                Utils.matToBitmap(mReconstImage, patchBmp);
+                ImageView imageView = (ImageView) findViewById(R.id.imageViewGallery);
+                imageView.setImageBitmap(patchBmp);
+            }
+        });
+
+
     }
 
     @SuppressLint("LongLogTag")
@@ -106,6 +155,7 @@ public class ImageProcessing extends AppCompatActivity {
         }
     }
 
+    // Convert the loaded-from-memory image to grayscale, and save in the designated private member.
     protected void convertToGrayscaleAction() {
         Mat grayImg = new Mat();
         Imgproc.cvtColor(mLoadedImage, grayImg, Imgproc.COLOR_BGR2GRAY);
@@ -115,7 +165,7 @@ public class ImageProcessing extends AppCompatActivity {
         Bitmap grayBmp = Bitmap.createBitmap(grayImg.cols(), grayImg.rows(), Bitmap.Config.ARGB_8888);
         Utils.matToBitmap(grayImg, grayBmp);
         imageView.setImageBitmap(grayBmp);
-        grayImg.release();
+        //grayImg.release(); // This we might need to re-think, as it might release the content of mGrayImageToProcess as well.
     }
 
     @Override
@@ -134,5 +184,6 @@ public class ImageProcessing extends AppCompatActivity {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        mPatches.clear();
     }
 }

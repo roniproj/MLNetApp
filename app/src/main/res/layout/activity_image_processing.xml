@@ -27,5 +27,21 @@
         android:layout_gravity="right|bottom"
         />
 
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Split to Patches"
+        android:id="@+id/split2Patches"
+        android:layout_gravity="right|top"
+        />
+
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Merge Patches"
+        android:id="@+id/mergePatches"
+        android:layout_gravity="left|top"
+        />
+
 </FrameLayout>
 
