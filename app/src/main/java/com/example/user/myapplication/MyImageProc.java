@@ -4,11 +4,14 @@ import android.graphics.Bitmap;
 import android.util.Log;
 
 import org.opencv.android.Utils;
+import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.Rect;
 
 import java.util.Vector;
+
+
 
 /**
  * Created by user on 17/04/2016.
@@ -16,6 +19,7 @@ import java.util.Vector;
 public class MyImageProc extends CameraListener {
 
     private static final String TAG = "MyImageProc";
+
 
     Mat processImage(Mat inputImage) {
         // HERE we shall add calling to the processing methods.
@@ -47,26 +51,93 @@ public class MyImageProc extends CameraListener {
         return patchesVec;
     }
 
+    // Copy the content of the double array to a Mat object.
+    public static void doubleArrayToMat(double[][] doubleArray, Mat matArray) {
+        if (doubleArray == null) {
+            Log.e(TAG, "Double[][] is null");
+            return;
+        }
+        if (matArray == null) {
+            Log.e(TAG, "Mat is null");
+            return;
+        }
+        int d1 = doubleArray.length;
+        int d2 = doubleArray[0].length;
+        for (int i=0; i<d1; i++) {
+            for (int j=0; j<d2; j++) {
+                matArray.put(i,j,doubleArray[i][j]);
+            }
+        }
+    }
+
     // Currently supports only the case where there is no averaging of overlaps.
     public static Mat mergePatches(Vector<Mat> patchesVec, int rowsAmount, int colsAmount, Vector<Rect> rects) {
         Mat recontructedImage = new Mat(rowsAmount, colsAmount, CvType.CV_8UC1);
         Log.i(TAG, "Created reconst image");
         int amountOfPatches = patchesVec.size();
-        for (int patchIndex = 0; patchIndex < amountOfPatches; patchIndex++){
-            //Log.i(TAG, "Entered loop " + Integer.toString(patchIndex) + "/" + Integer.toString(amountOfPatches));
+        for (int patchIndex = 0; patchIndex < amountOfPatches; patchIndex++) {
             Mat currentPatch = patchesVec.get(patchIndex);
             Rect roi = rects.get(patchIndex);
             currentPatch.copyTo(recontructedImage.submat(roi));
-            //Log.i(TAG, "Ended loop " + Integer.toString(patchIndex) + "/" + Integer.toString(amountOfPatches));
         }
         Log.i(TAG, "Leaving merge function");
         return recontructedImage;
     }
 
     public static Mat myConvertBitmapToMat(Bitmap bmpImage) {
-        Mat matImage = new Mat(bmpImage.getHeight(), bmpImage.getWidth(), CvType.CV_64F);
+        Mat matImage = new Mat(bmpImage.getHeight(), bmpImage.getWidth(), CvType.CV_64FC1);
         bmpImage = bmpImage.copy(Bitmap.Config.ARGB_8888, true);
         Utils.bitmapToMat(bmpImage, matImage);
         return matImage;
     }
+
+    // Reshape a matrix into a column (column-stack):
+    public static Mat matrixToColumn(Mat srcMat, boolean keepSrcMat) {
+        int rows = srcMat.rows() * srcMat.cols();
+        int cols = 1;
+        Mat dstMat = new Mat(rows, cols, CvType.CV_32FC1); // Must be of 32F type in order to be able to use gemm function.
+
+        int dstMatCounter = 0;
+        for (int col=0; col < srcMat.cols(); col++) {
+            for (int row=0; row < srcMat.rows(); row++) {
+                dstMat.put(dstMatCounter, 0, srcMat.get(row,col)[0]);
+                dstMatCounter++;
+            }
+        }
+        if (!keepSrcMat) {
+            srcMat.release();
+        }
+        return dstMat;
+    }
+
+    // Reshape a column into a matrix of patchSize x patchSize:
+    public static Mat columnToMatrix(Mat srcColumnMat, boolean keepSrcMat ) {
+        int patchSize = (int) Math.sqrt(srcColumnMat.rows() * srcColumnMat.cols());
+        Mat dstMat = new Mat(patchSize,patchSize,CvType.CV_8UC1);
+
+        int srcMatCounter = 0;
+        for (int col=0; col < dstMat.cols(); col++) {
+            for (int row=0; row < dstMat.rows(); row++) {
+                dstMat.put(row, col, srcColumnMat.get(srcMatCounter, 0)[0]);
+                srcMatCounter++;
+            }
+        }
+        if (!keepSrcMat) {
+            srcColumnMat.release();
+        }
+        return dstMat;
+
+    }
+
+    public static void scaleImageBy255(Mat inputImage) {
+        inputImage.convertTo(inputImage, CvType.CV_32FC1);
+        Core.scaleAdd(inputImage, (1.0 / 255.0), Mat.zeros(inputImage.size(), inputImage.type()), inputImage);
+    }
+
+    public static void scaleImageUpBy255(Mat inputImage) {
+        Core.scaleAdd(inputImage, (255.0), Mat.zeros(inputImage.size(), inputImage.type()), inputImage);
+        inputImage.convertTo(inputImage, CvType.CV_8UC1);
+    }
+
+
 }
