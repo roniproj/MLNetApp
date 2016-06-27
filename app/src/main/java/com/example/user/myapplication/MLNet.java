@@ -1,5 +1,7 @@
 package com.example.user.myapplication;
 
+import android.util.Log;
+
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
@@ -24,10 +26,10 @@ public class MLNet {
     public static int patchSize = 8;
 
     // The amount of shift between each patch.
-    public static int shiftAmount = 6;
+    public static int shiftAmount = 1;
 
     // The parameter used in the "rho" function.
-    public static int toEParameter;
+    public static int toEParameter = 4; // TODO: change to the max value of input image.
 
     // Useful functions:
     // The cost function's derivative:
@@ -52,9 +54,9 @@ public class MLNet {
         Mat z_abs = new Mat(z.rows(), z.cols(), CvType.CV_32FC1);
         Mat z_diff = new Mat(z.rows(), z.cols(), CvType.CV_32FC1);
 
-        Core.absdiff(z, Scalar.all(0), z_abs); // z_abs = |z|
+        Core.absdiff(z, Scalar.all(0.0), z_abs); // z_abs = |z|
         Core.subtract(z_abs, threshold, z_diff); // z_diff = |z|-t
-        Core.max(z_diff, Scalar.all(0), z_shrunk); // z_shrunk = max{z_diff,0}
+        Core.max(z_diff, Scalar.all(0.0), z_shrunk); // z_shrunk = max{z_diff,0}
         setSignToDst(z, z_shrunk); // z_shrunk = sign(z) .*  max{z_diff,0}
 
         z_abs.release();
@@ -122,8 +124,9 @@ public class MLNet {
 
         for (int i=0; i<NetworkParameters.T - 2; i++) {
             zShrunk = Shrink(zTemp, NetworkParameters.t);
+            // DEBUG:
+            Log.i(TAG, "Value of zShrunk(0), (8): " + String.valueOf(zShrunk.get(0,0)[0] + ", " + String.valueOf(zShrunk.get(8,0)[0])));
 
-            //toECalculation(zShrunk,toEParameter,toE,toEDerivative);
             // Calculate toE(A*z)
             Core.gemm(NetworkParameters.A, zShrunk, 1.0, Mat.zeros(toEArgument_A.size(), toEArgument_A.type()), 0.0, toEArgument_A);
             derive = false;
@@ -136,12 +139,31 @@ public class MLNet {
             gradient = CalculateCostsGradient(toE_A, inputPatch);
 
             Core.multiply(toEDerivative_Q, gradient, toEDerivative_Q);
-            Core.gemm(NetworkParameters.W, toEDerivative_Q, 1, blankMat, 0, toSubstract);
+            Core.gemm(NetworkParameters.W, toEDerivative_Q, 1.0, blankMat, 0.0, toSubstract);
 
             Core.subtract(zShrunk, toSubstract, zTemp);
         }
         zShrunk = Shrink(zTemp, NetworkParameters.t);
-        return zShrunk;
+
+        // Calculate the final patch (toE(D*z))
+        Mat toEArgument_D = new Mat(NetworkParameters.D.rows(), zShrunk.cols(), CvType.CV_32FC1);
+        // here will be the result of the toE calculation of the above.
+        Mat toE_D = new Mat(toEArgument_D.size(), CvType.CV_32FC1);
+        Core.gemm(NetworkParameters.D, zShrunk, 1.0, Mat.zeros(toEArgument_D.size(), toEArgument_D.type()), 0.0, toEArgument_D);
+        derive = false;
+        toECalculation(toEArgument_D, toEParameter, toE_D, null, derive);
+        // DEBUG:
+        Log.i(TAG, "Value of toE_D(4), (16): " + String.valueOf(toE_D.get(4, 0)[0] + ", " + String.valueOf(toE_D.get(16, 0)[0])));
+
+        // release all allocated aids:
+        toE_A.release();
+        toEArgument_A.release();
+        toEDerivative_Q.release();
+        toEDerArgument_Q.release();
+        toEArgument_D.release();
+        zShrunk.release();
+
+        return toE_D;
     }
 
     // Aid function for the shrinkage function - multiply each element in dst with the sign of the

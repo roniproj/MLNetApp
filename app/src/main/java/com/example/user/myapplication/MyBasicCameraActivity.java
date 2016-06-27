@@ -105,11 +105,7 @@ public class MyBasicCameraActivity extends AppCompatActivity {
                 if (!is_mkdir) {
                     Log.e(TAG, "Directory not created");
                 }
-                /*try {
-                    file.createNewFile();
-                } catch (IOException ex) {
-                    Log.e(TAG, "Directory not created");
-                }*/
+
                 String fileName = file.getPath() +
                         //Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).getPath() +
                         "/picture_of_myapp_" + currentDateandTime + ".jpg";

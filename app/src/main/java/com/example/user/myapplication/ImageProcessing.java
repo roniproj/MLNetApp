@@ -1,12 +1,17 @@
 package com.example.user.myapplication;
 
 import android.annotation.SuppressLint;
+import android.app.ProgressDialog;
+import android.content.ContentValues;
+import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
 import android.provider.MediaStore;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
@@ -32,10 +37,13 @@ import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Map;
 import java.util.Vector;
 
@@ -52,6 +60,11 @@ public class ImageProcessing extends AppCompatActivity {
     Button mSplitToPatchesButton;
     Button mMergePatchesButton;
     Button mDenoiseImageButton;
+
+    // Progress Bar:
+    private ProgressDialog progressBar;
+    private int progressBarStatus = 0;
+    private Handler progressBarHandler = new Handler();
 
     // Menu IDs:
     private static final int BASIC_PROC_ID = 0;
@@ -80,10 +93,11 @@ public class ImageProcessing extends AppCompatActivity {
     // Split to patches data:
     Vector<Mat> mPatches;
     Vector<Rect> mPatchesRects;
-    Vector<Mat> mDenoisedPatches;
+    static Vector<Mat> mDenoisedPatches;
     Mat mReconstImage;
     int mShiftForSplitting;
     int mPatchSize;
+    static int patchIdx=0;
 
     // This is the netparams in use for the advanced image processing:
     String mNetparamsFilename = "java_netparams_poiss_ours_temp_train2000_test1000_k_1_T_16_dr_4.mat";
@@ -157,13 +171,107 @@ public class ImageProcessing extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 Log.i(TAG, "onClick event");
-                denoiseImage();
+                denoiseWithProgressBar(v);
+                //denoiseImage();
+
             }
         });
 
     }
 
+    public void denoiseWithProgressBar(View v) {
+        // prepare for a progress bar dialog
+        progressBar = new ProgressDialog(v.getContext());
+        progressBar.setCancelable(false);
+        progressBar.setCanceledOnTouchOutside(false);
+        progressBar.setMessage("Denoising ...");
+        progressBar.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+        progressBar.setProgress(0);
+        progressBar.setMax(100);
+        progressBar.show();
 
+        //reset progress bar status
+        progressBarStatus = 0;
+
+        new Thread(new Runnable() {
+            public void run() {
+                while (progressBarStatus < 100) {
+
+                    progressBarStatus = denoiseImageInParts();
+                    // Update the progress bar
+                    progressBarHandler.post(new Runnable() {
+                        public void run() {
+                            progressBar.setProgress(progressBarStatus);
+                        }
+                    });
+                }
+
+                // Done denoising:
+                if (progressBarStatus >= 100) {
+                    // sleep 2 seconds, so that you can see the 100%
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    // close the progress bar dialog
+                    progressBar.dismiss();
+                }
+            }
+        }).start();
+
+    }
+
+    // Denoise image based on the loaded netparams.
+    protected int denoiseImageInParts() {
+        // First - load network parameters:
+        try {
+            InputStream netparamsStream = getResources().getAssets().open(mNetparamsFilename);
+            File netparamsFile = new File(getFilesDir() + "tempNetparams");
+            copyInputStreamToFile(netparamsStream, netparamsFile);
+            Log.i(TAG, "File exists? " + String.valueOf(netparamsFile.exists()));
+            readNetwork(netparamsFile);
+            netparamsFile.delete();
+            Log.i(TAG, "Loaded netparams successfully");
+        } catch (IOException ex) {
+            Log.e(TAG, "Couldn't read netparams file");
+            return -1;
+        }
+        // an initial check for a simple multiplication... on a single patch
+        boolean keepSrcMatrices = true;
+        if (progressBarStatus == 0) {
+            mDenoisedPatches = new Vector<>(mPatches.size());
+        }
+
+        // Progress bar stuff:
+        int subportion10PercentPatches = (int) Math.round(mPatches.size() / 100);
+        int beginPatch = (progressBarStatus) * subportion10PercentPatches;
+        int endPatch;
+        if (progressBarStatus == 99) {
+            endPatch = mPatches.size();
+        } else {
+            endPatch = ((progressBarStatus)+1) * subportion10PercentPatches;
+        }
+
+        for (patchIdx=beginPatch; patchIdx < endPatch; patchIdx++) {
+
+            Mat processedPatchColumn = MyImageProc.matrixToColumn(mPatches.elementAt(patchIdx),keepSrcMatrices);
+            Mat z0 = Mat.zeros(NetworkParameters.D.cols(), processedPatchColumn.cols(), processedPatchColumn.type());
+            Mat denoisedPatchColumn = MLNet.PropagateForward(z0, processedPatchColumn);
+
+            Mat denoisedPatch = MyImageProc.columnToMatrix(denoisedPatchColumn, !keepSrcMatrices);
+            mDenoisedPatches.add(patchIdx, denoisedPatch);
+            z0.release();
+
+        }
+
+        progressBarStatus = progressBarStatus + 1;
+        if (progressBarStatus == 100) {
+            mergePatches(mDenoisedPatches);
+            saveDenoisedImage();
+        }
+        return progressBarStatus;
+    }
 
     @SuppressLint("LongLogTag")
     @Override
@@ -201,23 +309,18 @@ public class ImageProcessing extends AppCompatActivity {
         imageView.setImageBitmap(grayBmp);
         MyImageProc.scaleImageBy255(mGrayImageToProcess);
         // TEMPORARY UNTIL SPEED-UP IS DONE:
-        Size imSize = new Size(100,100);
+        Size imSize = new Size(128,128);
         resize(mGrayImageToProcess, mGrayImageToProcess, imSize);
     }
 
-    // Split to patches and display the 100th patch.
+    // Split to patches.
     protected void splitToPatches() {
         int maxAmountOfPatches = mGrayImageToProcess.rows() * mGrayImageToProcess.cols();
         mPatchesRects = new Vector<>(maxAmountOfPatches);
-        mShiftForSplitting = mNetparams.shiftAmount;
-        mPatchSize = mNetparams.patchSize;
+        mShiftForSplitting = MLNet.shiftAmount;
+        mPatchSize = MLNet.patchSize;
         mPatches = MyImageProc.splitToPatches(mGrayImageToProcess, mPatchSize, mShiftForSplitting, mPatchesRects);
-        mDisplayedPatch = mPatches.get(100);
-        Bitmap patchBmp = Bitmap.createBitmap(mDisplayedPatch.cols(), mDisplayedPatch.rows(), Bitmap.Config.ARGB_8888);
-        MyImageProc.scaleImageUpBy255(mDisplayedPatch);
-        Utils.matToBitmap(mDisplayedPatch, patchBmp);
-        ImageView imageView = (ImageView) findViewById(R.id.imageViewGallery);
-        imageView.setImageBitmap(patchBmp);
+
     }
 
     // Merge patches and display merged result.
@@ -225,11 +328,15 @@ public class ImageProcessing extends AppCompatActivity {
         mReconstImage = MyImageProc.mergePatches(patchesVector, mGrayImageToProcess.rows(), mGrayImageToProcess.cols(), mPatchesRects);
         Log.i(TAG, "Successfully merged patches");
         //mDisplayedPatch = reconstructedImage;
-        Bitmap patchBmp = Bitmap.createBitmap(mReconstImage.cols(), mReconstImage.rows(), Bitmap.Config.ARGB_8888);
+        /*Bitmap patchBmp = Bitmap.createBitmap(mReconstImage.cols(), mReconstImage.rows(), Bitmap.Config.ARGB_8888);
+        // DEBUG:
+        Log.i(TAG, "reconst at (4,5), (10,20): " + String.valueOf(mReconstImage.get(4,5)[0]) + ", " + String.valueOf(mReconstImage.get(10,20)[0]));
         MyImageProc.scaleImageUpBy255(mReconstImage);
+        // DEBUG:
+        Log.i(TAG, "reconst at (4,5), (10,20): " + String.valueOf(mReconstImage.get(4,5)[0]) + ", " + String.valueOf(mReconstImage.get(10,20)[0]));
         Utils.matToBitmap(mReconstImage, patchBmp);
         ImageView imageView = (ImageView) findViewById(R.id.imageViewGallery);
-        imageView.setImageBitmap(patchBmp);
+        imageView.setImageBitmap(patchBmp);*/
     }
 
     // Denoise image based on the loaded netparams.
@@ -253,21 +360,74 @@ public class ImageProcessing extends AppCompatActivity {
         Mat patchColumn = new Mat();
         //Log.i(TAG, "Successfully created patchColumn");
         mDenoisedPatches = new Vector<>(mPatches.size());
-        for (int patchIdx=0; patchIdx < mPatches.size(); patchIdx++) {
+        for (patchIdx=0; patchIdx < mPatches.size(); patchIdx++) {
 
             Mat processedPatchColumn = MyImageProc.matrixToColumn(mPatches.elementAt(patchIdx),keepSrcMatrices);
             Mat z0 = Mat.zeros(NetworkParameters.D.cols(), processedPatchColumn.cols(), processedPatchColumn.type());
-            MLNet.PropagateForward(z0, processedPatchColumn);
-            //Core.gemm(dict, patchColumn, 1, new Mat(), 0, processedPatchColumn);
-            Mat processedPatch = MyImageProc.columnToMatrix(processedPatchColumn, !keepSrcMatrices);
-            mDenoisedPatches.add(patchIdx, processedPatch);
+            Mat denoisedPatchColumn = MLNet.PropagateForward(z0, processedPatchColumn);
+
+            Mat denoisedPatch = MyImageProc.columnToMatrix(denoisedPatchColumn, !keepSrcMatrices);
+            mDenoisedPatches.add(patchIdx, denoisedPatch);
             z0.release();
             if (patchIdx % 10 == 0) {
                 Log.i(TAG, "Processing patch " + String.valueOf(patchIdx) + "/" + String.valueOf(mPatches.size()));
             }
+            /* // FOR DEBUGGING:
+            if (patchIdx == 100) {
+                mDisplayedPatch = mDenoisedPatches.get(100);
+                Bitmap patchBmp = Bitmap.createBitmap(mDisplayedPatch.cols(), mDisplayedPatch.rows(), Bitmap.Config.ARGB_8888);
+                MyImageProc.scaleImageUpBy255(mDisplayedPatch);
+                Utils.matToBitmap(mDisplayedPatch, patchBmp);
+                ImageView imageView = (ImageView) findViewById(R.id.imageViewGallery);
+                imageView.setImageBitmap(patchBmp);
+            }
+            // END OF DEBUGGING CODE. */
         }
 
         mergePatches(mDenoisedPatches);
+
+    }
+
+    public void saveDenoisedImage() {
+        SimpleDateFormat sdf = new
+                SimpleDateFormat("yy-MM-dd_HH-mm-ss");
+        String currentDateandTime = sdf.format(new Date());
+        String albumName = "/RonisAppPics";
+        File file = new File(Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_PICTURES), albumName);
+        if (!file.exists()) {
+            boolean bool = file.mkdirs();
+            if (!bool) {
+                Log.e(TAG,"Folder not created");
+                return;
+            }
+        }
+        String fileName = file.getPath() + "/denoised_" + currentDateandTime + ".jpg";
+        File outFile = new File(fileName);
+        try {
+            outFile.createNewFile();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        try {
+            FileOutputStream os = new FileOutputStream(fileName);
+            Bitmap reconstBmp = Bitmap.createBitmap(mReconstImage.cols(), mReconstImage.rows(), Bitmap.Config.ARGB_8888);
+            MyImageProc.scaleImageUpBy255(mReconstImage);
+            Utils.matToBitmap(mReconstImage, reconstBmp);
+            reconstBmp.compress(Bitmap.CompressFormat.JPEG, 100, os);
+            addImageToGallery(fileName, ImageProcessing.this);
+            try {
+                os.flush();
+                os.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+
+        //Toast.makeText(ImageProcessing.this, fileName + " saved",
+          //      Toast.LENGTH_SHORT).show();
     }
 
     @Override
@@ -352,6 +512,17 @@ public class ImageProcessing extends AppCompatActivity {
         }
     }
 
+    private static void addImageToGallery(final String filePath, final Context
+            context) {
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Images.Media.DATE_TAKEN,
+                System.currentTimeMillis());
+        values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+        values.put(MediaStore.MediaColumns.DATA, filePath);
+        context.getContentResolver().
+                insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+    }
+
     // Aid function to convert an input stream into a file.
     private void copyInputStreamToFile( InputStream in, File file ) {
         try {
@@ -411,6 +582,7 @@ public class ImageProcessing extends AppCompatActivity {
                 Log.i(TAG, "Loaded T successfully");
 
                 Log.i(TAG, "Value of T: " + String.valueOf(mNetworkParameters.T));
+                Log.i(TAG, "Value of D(4,5): " + String.valueOf(mNetworkParameters.D.get(4,5)[0]));
             } else {
                 Log.e(TAG, "Unable to create content map from netparams file");
             }

@@ -37,15 +37,15 @@ public class MyImageProc extends CameraListener {
         int amountOfPatches = ((int) Math.floor((inputImage.rows() - patchSize)/shiftAmount) + 1) * ((int) Math.floor((inputImage.cols() - patchSize)/shiftAmount) + 1);
         Vector<Mat> patchesVec = new Vector<>(amountOfPatches);
         int patchCounter = 0;
+        Mat patch;
         for (int row=0; row < (inputImage.rows() - patchSize + 1); row+=shiftAmount) {
             for (int col=0; col< (inputImage.cols() - patchSize + 1); col+=shiftAmount) {
                 if (patchCounter >= amountOfPatches) {
                     Log.e(TAG, "Exceeded expected amount of patches");
                 }
-                Mat patch = getPatch(inputImage,patchSize,col,row,rects,patchCounter);
+                patch = getPatch(inputImage,patchSize,col,row,rects,patchCounter);
                 patchesVec.add(patchCounter, patch);
                 patchCounter++;
-                //patch.release();
             }
         }
         return patchesVec;
@@ -72,15 +72,33 @@ public class MyImageProc extends CameraListener {
 
     // Currently supports only the case where there is no averaging of overlaps.
     public static Mat mergePatches(Vector<Mat> patchesVec, int rowsAmount, int colsAmount, Vector<Rect> rects) {
-        Mat recontructedImage = new Mat(rowsAmount, colsAmount, CvType.CV_8UC1);
+        Mat recontructedImage = Mat.zeros(rowsAmount, colsAmount, patchesVec.get(0).type());
+        Mat aidRecontPatch = new Mat(patchesVec.get(0).size(), recontructedImage.type());
+        Mat normalizingFactorMat = Mat.zeros(recontructedImage.size(), recontructedImage.type());
+        Mat onesPatch = Mat.ones(patchesVec.get(0).size(), recontructedImage.type());
+        Mat aidPatch = new Mat(patchesVec.get(0).size(), recontructedImage.type());
         Log.i(TAG, "Created reconst image");
         int amountOfPatches = patchesVec.size();
         for (int patchIndex = 0; patchIndex < amountOfPatches; patchIndex++) {
             Mat currentPatch = patchesVec.get(patchIndex);
             Rect roi = rects.get(patchIndex);
-            currentPatch.copyTo(recontructedImage.submat(roi));
+            Log.i(TAG, "P" + String.valueOf(patchIndex) + "Types: " + String.valueOf(currentPatch.type()) + "," + String.valueOf(recontructedImage.submat(roi).type()) + "," + String.valueOf(aidRecontPatch.type()));
+            Core.add(currentPatch, recontructedImage.submat(roi), aidRecontPatch);
+            aidRecontPatch.copyTo(recontructedImage.submat(roi));
+
+            Core.add(normalizingFactorMat.submat(roi), onesPatch, aidPatch);
+            aidPatch.copyTo(normalizingFactorMat.submat(roi));
         }
+        Core.divide(recontructedImage, normalizingFactorMat, recontructedImage);
+        // DEBUG:
+        Log.i(TAG, "(0,0), (0,5)" + String.valueOf(normalizingFactorMat.get(0,0)[0]) + "," + String.valueOf(normalizingFactorMat.get(0,5)[0]));
         Log.i(TAG, "Leaving merge function");
+
+        aidPatch.release();
+        aidRecontPatch.release();
+        normalizingFactorMat.release();
+        onesPatch.release();
+
         return recontructedImage;
     }
 
@@ -113,7 +131,7 @@ public class MyImageProc extends CameraListener {
     // Reshape a column into a matrix of patchSize x patchSize:
     public static Mat columnToMatrix(Mat srcColumnMat, boolean keepSrcMat ) {
         int patchSize = (int) Math.sqrt(srcColumnMat.rows() * srcColumnMat.cols());
-        Mat dstMat = new Mat(patchSize,patchSize,CvType.CV_8UC1);
+        Mat dstMat = new Mat(patchSize,patchSize,CvType.CV_32FC1);
 
         int srcMatCounter = 0;
         for (int col=0; col < dstMat.cols(); col++) {
