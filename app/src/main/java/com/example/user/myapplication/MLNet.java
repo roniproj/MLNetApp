@@ -15,8 +15,6 @@ public class MLNet {
     private static final String TAG = "MLNetClass";
 
     // MLNet parameters:
-    // the NN:
-    public NetworkParameters networkParameters;
 
     // The maximal image's signal.
     // This might be used to choose a network, if using different networks for different peak values.
@@ -65,6 +63,7 @@ public class MLNet {
         return z_shrunk;
     }
 
+    // Calculate the "toE" function - either regularly or its derivative.
     public static void toECalculation(Mat argument, int toEParameter, Mat resultToE, Mat resultToEDerivative, boolean derive) {
         for (int row=0; row<argument.rows(); row++) {
             for (int col = 0; col < argument.cols(); col++) {

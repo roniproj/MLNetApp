@@ -4,43 +4,39 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <android.support.v7.widget.Toolbar
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:app="http://schemas.android.com/apk/res-auto"
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="?attr/actionBarSize"
+        app:popupTheme="@style/ThemeOverlay.AppCompat.Light"
+        app:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar" />
+
     <ImageView
-        android:layout_width="fill_parent"
-        android:layout_height="fill_parent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:adjustViewBounds="true"
         android:id="@+id/imageViewGallery"
-        android:background="#e0f1f0" />
+        />
 
     <Button
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Load Picture"
         android:id="@+id/loadImageButton"
-        android:layout_gravity="left|bottom"
+        android:layout_gravity="left|top"
         style="@android:style/Widget.Button"
         android:background="#372968"
         android:textColor="#ffffff" />
 
-    <Button
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Convert to Grayscale"
-        android:id="@+id/cnvrt2Gray"
-        android:layout_gravity="right|bottom"
-        style="@android:style/Widget.Button" />
 
     <Button
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Merge Patches"
-        android:id="@+id/mergePatches"
-        android:layout_gravity="left|top"
-        style="@android:style/Widget.Button" />
-
-    <Button
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Split to Patches"
-        android:id="@+id/split2Patches"
+        android:text="Manually Process Image"
+        android:id="@+id/manuallyProcess"
         android:layout_gravity="right|top"
         style="@android:style/Widget.Button"
         />
@@ -53,6 +49,33 @@
         android:layout_gravity="center_horizontal|top"
         style="@android:style/Widget.Button"
         />
+
+    <!--Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Merge Patches"
+        android:id="@+id/mergePatches"
+        android:layout_gravity="left|top"
+        style="@android:style/Widget.Button" /-->
+
+    <!--Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Split to Patches"
+        android:id="@+id/split2Patches"
+        android:layout_gravity="right|top"
+        style="@android:style/Widget.Button"
+        /-->
+
+    <!--Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Convert to Grayscale"
+        android:id="@+id/cnvrt2Gray"
+        android:layout_gravity="right|bottom"
+        style="@android:style/Widget.Button" /-->
+
+
 
 </FrameLayout>
 

@@ -98,7 +98,7 @@ public class MyBasicCameraActivity extends AppCompatActivity {
                 SimpleDateFormat sdf = new
                         SimpleDateFormat("yy-MM-dd_HH-mm-ss");
                 String currentDateandTime = sdf.format(new Date());
-                String albumName = "RonisAppPics";
+                String albumName = "MLNetAppPics";
                 File file = new File(Environment.getExternalStoragePublicDirectory(
                         Environment.DIRECTORY_PICTURES), albumName);
                 boolean is_mkdir = file.mkdir();

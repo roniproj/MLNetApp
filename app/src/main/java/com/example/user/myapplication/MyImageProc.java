@@ -21,11 +21,6 @@ public class MyImageProc extends CameraListener {
     private static final String TAG = "MyImageProc";
 
 
-    Mat processImage(Mat inputImage) {
-        // HERE we shall add calling to the processing methods.
-        return inputImage;
-    }
-
     public static Mat getPatch(Mat inputImage, int size, int xTopLeftPos, int yTopLeftPos, Vector<Rect> rects, int rectIndex) {
         Rect rect = new Rect(xTopLeftPos,yTopLeftPos,size,size);
         rects.add(rectIndex, rect);
@@ -33,6 +28,9 @@ public class MyImageProc extends CameraListener {
         return patch;
     }
 
+
+    // Split the inputImage to patches, according to the supplied shift amount and the patch size, and return a vector of the patches.
+    // The function will also save the "rects" the were used in the splitting process, so we'll have matching patch<->rect pairs.
     public static Vector<Mat> splitToPatches(Mat inputImage, int patchSize, int shiftAmount, Vector<Rect> rects) {
         int amountOfPatches = ((int) Math.floor((inputImage.rows() - patchSize)/shiftAmount) + 1) * ((int) Math.floor((inputImage.cols() - patchSize)/shiftAmount) + 1);
         Vector<Mat> patchesVec = new Vector<>(amountOfPatches);
@@ -51,7 +49,7 @@ public class MyImageProc extends CameraListener {
         return patchesVec;
     }
 
-    // Copy the content of the double array to a Mat object.
+    // Copy the content of a double array to a Mat object.
     public static void doubleArrayToMat(double[][] doubleArray, Mat matArray) {
         if (doubleArray == null) {
             Log.e(TAG, "Double[][] is null");
@@ -70,28 +68,35 @@ public class MyImageProc extends CameraListener {
         }
     }
 
-    // Currently supports only the case where there is no averaging of overlaps.
+    // Merge the patches in "patchesVec" to a complete image, and return it.
+    // The merging process does an average of the overlapping parts.
     public static Mat mergePatches(Vector<Mat> patchesVec, int rowsAmount, int colsAmount, Vector<Rect> rects) {
+
         Mat recontructedImage = Mat.zeros(rowsAmount, colsAmount, patchesVec.get(0).type());
         Mat aidRecontPatch = new Mat(patchesVec.get(0).size(), recontructedImage.type());
+
+        // This matrix will hold counters of the amount of patches covering each pixel.
+        // At the end - we will normalize the result of the addition of patches with these factors, to receive the average.
         Mat normalizingFactorMat = Mat.zeros(recontructedImage.size(), recontructedImage.type());
+
         Mat onesPatch = Mat.ones(patchesVec.get(0).size(), recontructedImage.type());
         Mat aidPatch = new Mat(patchesVec.get(0).size(), recontructedImage.type());
-        Log.i(TAG, "Created reconst image");
+
         int amountOfPatches = patchesVec.size();
         for (int patchIndex = 0; patchIndex < amountOfPatches; patchIndex++) {
             Mat currentPatch = patchesVec.get(patchIndex);
             Rect roi = rects.get(patchIndex);
-            Log.i(TAG, "P" + String.valueOf(patchIndex) + "Types: " + String.valueOf(currentPatch.type()) + "," + String.valueOf(recontructedImage.submat(roi).type()) + "," + String.valueOf(aidRecontPatch.type()));
+            // Accumulate the values of the pixels:
             Core.add(currentPatch, recontructedImage.submat(roi), aidRecontPatch);
             aidRecontPatch.copyTo(recontructedImage.submat(roi));
 
+            // Update the "counters" for the final normalization:
             Core.add(normalizingFactorMat.submat(roi), onesPatch, aidPatch);
             aidPatch.copyTo(normalizingFactorMat.submat(roi));
         }
+        // Normalize to get the average per pixel:
         Core.divide(recontructedImage, normalizingFactorMat, recontructedImage);
-        // DEBUG:
-        Log.i(TAG, "(0,0), (0,5)" + String.valueOf(normalizingFactorMat.get(0,0)[0]) + "," + String.valueOf(normalizingFactorMat.get(0,5)[0]));
+
         Log.i(TAG, "Leaving merge function");
 
         aidPatch.release();
@@ -115,7 +120,7 @@ public class MyImageProc extends CameraListener {
         int cols = 1;
         Mat dstMat = new Mat(rows, cols, CvType.CV_32FC1); // Must be of 32F type in order to be able to use gemm function.
 
-        int dstMatCounter = 0;
+        int dstMatCounter = 0; // The index for the destination column Mat
         for (int col=0; col < srcMat.cols(); col++) {
             for (int row=0; row < srcMat.rows(); row++) {
                 dstMat.put(dstMatCounter, 0, srcMat.get(row,col)[0]);
@@ -147,11 +152,14 @@ public class MyImageProc extends CameraListener {
 
     }
 
+
+    // Scale down an image from 0-255 to 0-1
     public static void scaleImageBy255(Mat inputImage) {
         inputImage.convertTo(inputImage, CvType.CV_32FC1);
         Core.scaleAdd(inputImage, (1.0 / 255.0), Mat.zeros(inputImage.size(), inputImage.type()), inputImage);
     }
 
+    // Scale up an image from 0-1 to 0-255, and save as an 8bit uints:
     public static void scaleImageUpBy255(Mat inputImage) {
         Core.scaleAdd(inputImage, (255.0), Mat.zeros(inputImage.size(), inputImage.type()), inputImage);
         inputImage.convertTo(inputImage, CvType.CV_8UC1);

@@ -14,6 +14,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.provider.MediaStore;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -21,6 +22,7 @@ import android.view.SubMenu;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.Toast;
 
 import com.jmatio.io.MatFileReader;
 import com.jmatio.types.MLArray;
@@ -60,6 +62,7 @@ public class ImageProcessing extends AppCompatActivity {
     Button mSplitToPatchesButton;
     Button mMergePatchesButton;
     Button mDenoiseImageButton;
+    Button mManuallyProcessImageButton;
 
     // Progress Bar:
     private ProgressDialog progressBar;
@@ -70,9 +73,9 @@ public class ImageProcessing extends AppCompatActivity {
     private static final int BASIC_PROC_ID = 0;
     private static final int ADV_PROC_ID = 1;
     // Sub-Menus IDs:
-    private static final int CONV_TO_GRAYSCALE = 0;
-    private static final int SPLIT_TO_PATCHES = 0;
-    private static final int MERGE_PATCHES = 1;
+    private static final int CONV_TO_GRAYSCALE = 2;
+    private static final int SPLIT_TO_PATCHES = 3;
+    private static final int MERGE_PATCHES = 4;
 
     // Menus:
     private SubMenu mBasicProcMenu;
@@ -101,7 +104,6 @@ public class ImageProcessing extends AppCompatActivity {
 
     // This is the netparams in use for the advanced image processing:
     String mNetparamsFilename = "java_netparams_poiss_ours_temp_train2000_test1000_k_1_T_16_dr_4.mat";
-    MLNet mNetparams;
     NetworkParameters mNetworkParameters;
 
 
@@ -125,6 +127,12 @@ public class ImageProcessing extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_image_processing);
 
+        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        if(toolbar != null) {
+            setSupportActionBar(toolbar);
+        }
+
+
         // Take care of the Load image button:
         mLoadImageButton = (Button) findViewById(R.id.loadImageButton);
         mLoadImageButton.setOnClickListener(new View.OnClickListener() {
@@ -136,13 +144,17 @@ public class ImageProcessing extends AppCompatActivity {
             }
         });
 
+        // These buttons are a breakdown of the processing stages.
+        // In order to return them: 1. Uncomment here, 2. Uncomment in xml file.
+
+        /*
         // Take care of convert to grayscale button:
         mConvert2GrayButton = (Button) findViewById(R.id.cnvrt2Gray);
         mConvert2GrayButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Log.i(TAG, "onClick event");
-                convertToGrayscaleAction();
+                convertToGrayscaleAction(true);
             }
         });
 
@@ -165,12 +177,39 @@ public class ImageProcessing extends AppCompatActivity {
                 mergePatches(mPatches);
             }
         });
+        */
+
+        mManuallyProcessImageButton = (Button) findViewById(R.id.manuallyProcess);
+        mManuallyProcessImageButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Log.i(TAG, "onClick event");
+                if (mLoadedImage == null) {
+                    Toast.makeText(ImageProcessing.this, "Must load a picture before processing!",
+                            Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                openOptionsMenu();
+            }
+        });
 
         mDenoiseImageButton = (Button) findViewById(R.id.denoiseImage);
         mDenoiseImageButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Log.i(TAG, "onClick event");
+                // First check if a picture was loaded:
+                if (mLoadedImage == null) {
+                    Toast.makeText(ImageProcessing.this, "Must load a picture before denoising!",
+                                  Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                // Full denoising process:
+                // 1. Convert to grayscale:
+                convertToGrayscaleAction(false);
+                // 2. split to patches:
+                splitToPatches();
+                // 3. denoise + merge back:
                 denoiseWithProgressBar(v);
                 //denoiseImage();
 
@@ -179,6 +218,7 @@ public class ImageProcessing extends AppCompatActivity {
 
     }
 
+    // Denoise image will showing the progress in a Progress bar on the screen:
     public void denoiseWithProgressBar(View v) {
         // prepare for a progress bar dialog
         progressBar = new ProgressDialog(v.getContext());
@@ -223,6 +263,12 @@ public class ImageProcessing extends AppCompatActivity {
     }
 
     // Denoise image based on the loaded netparams.
+    // This assumes we already converted the image to grayscale and split to patches.
+    //
+    // This version of denoising "breaks" the process into 1% chuncks of work,
+    // in order to support using a Progress Bar.
+    //
+    // Comments on the content of this function are similar to "denoiseImage" below.
     protected int denoiseImageInParts() {
         // First - load network parameters:
         try {
@@ -298,15 +344,23 @@ public class ImageProcessing extends AppCompatActivity {
     }
 
     // Convert the loaded-from-memory image to grayscale, and save in the designated private member.
-    protected void convertToGrayscaleAction() {
+    protected void convertToGrayscaleAction(boolean displayGray) {
+        if (mLoadedImage == null) {
+            Toast.makeText(ImageProcessing.this, "Must load a picture before denoising!",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         Mat grayImg = new Mat();
         Imgproc.cvtColor(mLoadedImage, grayImg, Imgproc.COLOR_BGR2GRAY);
         mGrayImageToProcess = grayImg;
-        ImageView imageView = (ImageView) findViewById(R.id.imageViewGallery);
-        imageView.setVisibility(View.VISIBLE);
-        Bitmap grayBmp = Bitmap.createBitmap(grayImg.cols(), grayImg.rows(), Bitmap.Config.ARGB_8888);
-        Utils.matToBitmap(grayImg, grayBmp);
-        imageView.setImageBitmap(grayBmp);
+        if (displayGray) {
+            ImageView imageView = (ImageView) findViewById(R.id.imageViewGallery);
+            imageView.setVisibility(View.VISIBLE);
+            Bitmap grayBmp = Bitmap.createBitmap(grayImg.cols(), grayImg.rows(), Bitmap.Config.ARGB_8888);
+            Utils.matToBitmap(grayImg, grayBmp);
+            imageView.setImageBitmap(grayBmp);
+        }
         MyImageProc.scaleImageBy255(mGrayImageToProcess);
         // TEMPORARY UNTIL SPEED-UP IS DONE:
         Size imSize = new Size(128,128);
@@ -340,6 +394,7 @@ public class ImageProcessing extends AppCompatActivity {
     }
 
     // Denoise image based on the loaded netparams.
+    // This assumes we already converted the image to grayscale and split to patches.
     protected void denoiseImage() {
         // First - load network parameters:
         try {
@@ -348,51 +403,46 @@ public class ImageProcessing extends AppCompatActivity {
             copyInputStreamToFile(netparamsStream, netparamsFile);
             Log.i(TAG, "File exists? " + String.valueOf(netparamsFile.exists()));
             readNetwork(netparamsFile);
-            //mNetparams.networkParameters = mNetworkParameters;
             netparamsFile.delete();
             Log.i(TAG, "Loaded netparams successfully");
         } catch (IOException ex) {
             Log.e(TAG, "Couldn't read netparams file");
             return;
         }
-        // an initial check for a simple multiplication... on a single patch
+
         boolean keepSrcMatrices = true;
-        Mat patchColumn = new Mat();
-        //Log.i(TAG, "Successfully created patchColumn");
         mDenoisedPatches = new Vector<>(mPatches.size());
+
         for (patchIdx=0; patchIdx < mPatches.size(); patchIdx++) {
-
+            // Convert patch to column, so we'll be able to process it:
             Mat processedPatchColumn = MyImageProc.matrixToColumn(mPatches.elementAt(patchIdx),keepSrcMatrices);
+            // Initialize z0 (initial "code") with zeros:
             Mat z0 = Mat.zeros(NetworkParameters.D.cols(), processedPatchColumn.cols(), processedPatchColumn.type());
+            // Denoise patch:
             Mat denoisedPatchColumn = MLNet.PropagateForward(z0, processedPatchColumn);
-
+            // Reshape patch back from the column form:
             Mat denoisedPatch = MyImageProc.columnToMatrix(denoisedPatchColumn, !keepSrcMatrices);
             mDenoisedPatches.add(patchIdx, denoisedPatch);
+
             z0.release();
+
+            // Logging the process:
             if (patchIdx % 10 == 0) {
                 Log.i(TAG, "Processing patch " + String.valueOf(patchIdx) + "/" + String.valueOf(mPatches.size()));
             }
-            /* // FOR DEBUGGING:
-            if (patchIdx == 100) {
-                mDisplayedPatch = mDenoisedPatches.get(100);
-                Bitmap patchBmp = Bitmap.createBitmap(mDisplayedPatch.cols(), mDisplayedPatch.rows(), Bitmap.Config.ARGB_8888);
-                MyImageProc.scaleImageUpBy255(mDisplayedPatch);
-                Utils.matToBitmap(mDisplayedPatch, patchBmp);
-                ImageView imageView = (ImageView) findViewById(R.id.imageViewGallery);
-                imageView.setImageBitmap(patchBmp);
-            }
-            // END OF DEBUGGING CODE. */
-        }
 
+        }
+        // Merge patches to a complete image:
         mergePatches(mDenoisedPatches);
 
     }
 
+    // Save the denoised image to the gallery:
     public void saveDenoisedImage() {
         SimpleDateFormat sdf = new
                 SimpleDateFormat("yy-MM-dd_HH-mm-ss");
         String currentDateandTime = sdf.format(new Date());
-        String albumName = "/RonisAppPics";
+        String albumName = "/MLNetAppPics";
         File file = new File(Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_PICTURES), albumName);
         if (!file.exists()) {
@@ -466,7 +516,9 @@ public class ImageProcessing extends AppCompatActivity {
             case BASIC_PROC_ID:
                 switch (id) {
                     case CONV_TO_GRAYSCALE:
-                        convertToGrayscaleAction();
+                        convertToGrayscaleAction(true);
+                        break;
+                    default:
                         break;
                 }
                 break;
@@ -539,7 +591,7 @@ public class ImageProcessing extends AppCompatActivity {
         }
     }
 
-    // This function reads a mat file (maybe) that contains java arrays,
+    // This function reads a mat file that contains the arrays,
     // and convert them to Mat files.
     public void readNetwork(File netparamsInputFile) {
         Log.i(TAG, "Entered readNetwork");
@@ -548,16 +600,11 @@ public class ImageProcessing extends AppCompatActivity {
             netparamsFile = new MatFileReader(netparamsInputFile);
         } catch (IOException e) {
             Log.e(TAG, "Couldn't read netparams file");
-            return; // Ori
+            return;
         }
-        Log.i(TAG, "Tried, didn't catch");
         if (netparamsFile != null) {
             Map<String,MLArray> netparamsMap = netparamsFile.getContent();
             if (netparamsMap != null) {
-                MLArray DArr = netparamsMap.get("javaD");
-                Log.i(TAG, "Succeeded in getting javaD MLArray");
-                MLDouble DArrDouble = (MLDouble) DArr;
-                Log.i(TAG, "Succeeded in casting javaD MLArray to MLDouble");
                 double[][] D = ((MLDouble) netparamsMap.get("javaD")).getArray();
                 NetworkParameters.D = new Mat(D.length, D[0].length, CvType.CV_32FC1);
                 MyImageProc.doubleArrayToMat(D, mNetworkParameters.D);
@@ -581,8 +628,6 @@ public class ImageProcessing extends AppCompatActivity {
                 mNetworkParameters.T = (int) (((MLDouble) netparamsMap.get("javaT")).getArray())[0][0];
                 Log.i(TAG, "Loaded T successfully");
 
-                Log.i(TAG, "Value of T: " + String.valueOf(mNetworkParameters.T));
-                Log.i(TAG, "Value of D(4,5): " + String.valueOf(mNetworkParameters.D.get(4,5)[0]));
             } else {
                 Log.e(TAG, "Unable to create content map from netparams file");
             }
