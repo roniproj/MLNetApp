@@ -103,7 +103,9 @@ public class ImageProcessing extends AppCompatActivity {
     static int patchIdx=0;
 
     // This is the netparams in use for the advanced image processing:
-    String mNetparamsFilename = "java_netparams_poiss_ours_temp_train2000_test1000_k_1_T_16_dr_4.mat";
+    //String mNetparamsFilename = "java_netparams_poiss_ours_temp_train2000_test1000_k_1_T_16_dr_4.mat";
+    //String mNetparamsFilename = "java_netparams_poiss_ours_temp_train2000test1000_k_1_T_8_dr_4_norm_nmise.mat";
+    String mNetparamsFilename = "java_netparams_poiss_ours_temp_train2000test1000_k_1_T_4_dr_4_norm_kullback_liebler.mat";
     NetworkParameters mNetworkParameters;
 
 
@@ -361,6 +363,7 @@ public class ImageProcessing extends AppCompatActivity {
             Utils.matToBitmap(grayImg, grayBmp);
             imageView.setImageBitmap(grayBmp);
         }
+        // TODO this was commented for testing:
         MyImageProc.scaleImageBy255(mGrayImageToProcess);
         // TEMPORARY UNTIL SPEED-UP IS DONE:
         Size imSize = new Size(128,128);
@@ -476,8 +479,6 @@ public class ImageProcessing extends AppCompatActivity {
             e.printStackTrace();
         }
 
-        //Toast.makeText(ImageProcessing.this, fileName + " saved",
-          //      Toast.LENGTH_SHORT).show();
     }
 
     @Override

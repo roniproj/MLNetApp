@@ -161,6 +161,7 @@ public class MyImageProc extends CameraListener {
 
     // Scale up an image from 0-1 to 0-255, and save as an 8bit uints:
     public static void scaleImageUpBy255(Mat inputImage) {
+        // TODO this is commented for debug
         Core.scaleAdd(inputImage, (255.0), Mat.zeros(inputImage.size(), inputImage.type()), inputImage);
         inputImage.convertTo(inputImage, CvType.CV_8UC1);
     }
